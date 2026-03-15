@@ -153,6 +153,63 @@ async function fetchYahooChart(ticker: string) {
   };
 }
 
+// CoinGecko ID map for common crypto symbols
+const COINGECKO_IDS: Record<string, string> = {
+  "BTC-USD": "bitcoin", "ETH-USD": "ethereum", "SOL-USD": "solana",
+  "DOGE-USD": "dogecoin", "XRP-USD": "ripple", "ADA-USD": "cardano",
+  "AVAX-USD": "avalanche-2", "MATIC-USD": "matic-network", "DOT-USD": "polkadot",
+  "LINK-USD": "chainlink", "LTC-USD": "litecoin", "BNB-USD": "binancecoin",
+  "UNI-USD": "uniswap", "ATOM-USD": "cosmos", "SHIB-USD": "shiba-inu",
+};
+
+function isCrypto(ticker: string): boolean {
+  return ticker.toUpperCase().endsWith("-USD") && ticker.toUpperCase() in COINGECKO_IDS;
+}
+
+// CoinGecko: free, no API key needed
+async function fetchCoinGecko(ticker: string) {
+  const id = COINGECKO_IDS[ticker.toUpperCase()];
+  if (!id) throw new Error(`No CoinGecko ID for "${ticker}"`);
+
+  const [marketRes, histRes] = await Promise.all([
+    fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${id}`, {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(10000),
+    }),
+    fetch(`https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=30&interval=daily`, {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(10000),
+    }),
+  ]);
+
+  if (!marketRes.ok) throw new Error(`CoinGecko HTTP ${marketRes.status}`);
+  const marketJson = await marketRes.json();
+  const coin = marketJson[0];
+  if (!coin) throw new Error(`No CoinGecko data for "${ticker}"`);
+
+  let historical: { date: string; close: number }[] = [];
+  if (histRes.ok) {
+    const histJson = await histRes.json();
+    historical = (histJson.prices || []).slice(-30).map(([ts, price]: [number, number]) => ({
+      date: new Date(ts).toISOString().split("T")[0],
+      close: price,
+    }));
+  }
+
+  return {
+    symbol: ticker.toUpperCase(),
+    shortName: coin.name,
+    regularMarketPrice: coin.current_price,
+    regularMarketChange: coin.price_change_24h,
+    regularMarketChangePercent: coin.price_change_percentage_24h,
+    currency: "USD",
+    marketCap: coin.market_cap,
+    fiftyTwoWeekHigh: coin.ath ?? coin.high_24h,
+    fiftyTwoWeekLow: coin.atl ?? coin.low_24h,
+    historical,
+  };
+}
+
 // Openclaw Fallback
 async function fetchOpenclawMarketData(ticker: string) {
   console.log(`Spawning Openclaw agent to fetch market data for ${ticker}...`);
@@ -204,6 +261,15 @@ export async function GET(request: NextRequest) {
         marketData = await fetchStooq(ticker);
       } catch (stooqErr: any) {
         console.warn(`Stooq failed for "${ticker}" (${stooqErr.message}), trying Yahoo Finance…`);
+      }
+    }
+
+    // CoinGecko for crypto (free, no auth, no rate limits)
+    if (!marketData && isCrypto(ticker)) {
+      try {
+        marketData = await fetchCoinGecko(ticker);
+      } catch (cgErr: any) {
+        console.warn(`CoinGecko failed for "${ticker}" (${cgErr.message}), trying Yahoo Finance…`);
       }
     }
 
