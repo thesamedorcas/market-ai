@@ -97,11 +97,11 @@ The model ends with a single-sentence directional verdict.
 BTC-USD  ETH-USD  GLD  SPY  QQQ  AAPL  TSLA  NVDA  MSFT  USO
 ```
 
-On Vercel this route is called automatically every 5 minutes via `vercel.json`:
+On Vercel (free tier) this route runs once daily via `vercel.json`; the full 5-minute schedule runs in self-hosted environments:
 
 ```json
 {
-  "crons": [{ "path": "/api/cron/refresh", "schedule": "*/5 * * * *" }]
+  "crons": [{ "path": "/api/cron/refresh", "schedule": "0 9 * * *" }]
 }
 ```
 
