@@ -189,13 +189,19 @@
   line-height: 1.4;
 }
 
+.news-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
 .news-source {
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 0.35rem;
 }
 
 .news-snippet {
