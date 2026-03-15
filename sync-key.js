@@ -11,13 +11,22 @@ try {
   const authProfilePath = path.join(require('os').homedir(), '.openclaw/agents/main/agent/auth-profiles.json');
   
   fs.mkdirSync(path.dirname(authProfilePath), { recursive: true });
+  const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
   fs.writeFileSync(authProfilePath, JSON.stringify({
     openai: {
       primary: {
         method: "apiKey",
         value: key
       }
-    }
+    },
+    ...(anthropicKey && {
+      anthropic: {
+        primary: {
+          method: "apiKey",
+          value: anthropicKey
+        }
+      }
+    })
   }, null, 2));
   
   console.log("Successfully synced API key to openclaw");
