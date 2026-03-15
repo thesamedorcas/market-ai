@@ -13,57 +13,97 @@ export default function AssetDashboard({ params }: { params: Promise<{ ticker: s
   const [marketData, setMarketData] = useState<any>(null);
   const [newsData, setNewsData] = useState<any>(null);
   const [aiSummary, setAiSummary] = useState<string>("");
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState("Starting up…");
   const [error, setError] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [nextRefreshIn, setNextRefreshIn] = useState(300);
+
+  const REFRESH_INTERVAL = 300; // 5 minutes
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
         setError("");
+        setStatusMessage("Starting up…");
 
-        const mktRes = await fetch(`/api/market-data?ticker=${decodedTicker}`);
-        if (!mktRes.ok) throw new Error("Failed to fetch market data");
-        const mktJson = await mktRes.json();
-        setMarketData(mktJson);
+        const res = await fetch(`/api/multi-agent?ticker=${decodedTicker}`);
+        if (!res.ok) throw new Error("Failed to fetch market data");
 
-        const newsRes = await fetch(`/api/news?q=${mktJson.shortName || decodedTicker}`);
-        const newsJson = newsRes.ok ? await newsRes.json() : { social: [] };
-        setNewsData(newsJson);
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-        const aiRes = await fetch("/api/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ticker: decodedTicker,
-            marketData: mktJson,
-            socialData: newsJson.social,
-          }),
-        });
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-        if (aiRes.ok) {
-          const aiJson = await aiRes.json();
-          setAiSummary(aiJson.summary || "No summary available.");
-        } else {
-          setAiSummary("AI analysis currently unavailable.");
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          let event = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              event = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              const payload = JSON.parse(line.slice(6));
+              if (event === "status") {
+                setStatusMessage(payload.message);
+              } else if (event === "result") {
+                const json = payload;
+                if (json.resolvedTicker && json.resolvedTicker !== decodedTicker) {
+                  router.replace(`/asset/${encodeURIComponent(json.resolvedTicker)}`);
+                  return;
+                }
+                setMarketData(json.marketData);
+                setNewsData({ social: json.social || [] });
+                setAiSummary(json.summary || "No summary available.");
+                if (json.lastUpdated) setLastUpdated(new Date(json.lastUpdated));
+              } else if (event === "error") {
+                throw new Error(payload.error);
+              }
+              event = "";
+            }
+          }
         }
       } catch (err: any) {
         console.error(err);
         setError(err.message || "An error occurred fetching data.");
       } finally {
         setLoading(false);
+        setNextRefreshIn(REFRESH_INTERVAL);
       }
     }
 
     fetchData();
+
+    // auto-refresh every 5 minutes
+    const refreshTimer = setInterval(() => {
+      setRefreshTick((t) => t + 1);
+      fetchData();
+    }, REFRESH_INTERVAL * 1000);
+
+    return () => clearInterval(refreshTimer);
   }, [decodedTicker]);
+
+  // countdown ticker
+  useEffect(() => {
+    if (loading) return;
+    const countdown = setInterval(() => {
+      setNextRefreshIn((s) => (s <= 1 ? REFRESH_INTERVAL : s - 1));
+    }, 1000);
+    return () => clearInterval(countdown);
+  }, [loading]);
 
   if (loading) {
     return (
       <div className="dashboard-container">
         <div className="loader-container">
           <div className="spinner"></div>
-          <div className="loader-text">Loading market data...</div>
+          <div className="loader-text">{statusMessage}</div>
         </div>
       </div>
     );
@@ -96,7 +136,17 @@ export default function AssetDashboard({ params }: { params: Promise<{ ticker: s
     <div className="dashboard-container">
       <nav className="dashboard-nav">
         <span className="dashboard-nav-logo" onClick={() => router.push("/")}>Market AI</span>
-        <button onClick={() => router.push("/")} className="back-btn">← Back</button>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          {lastUpdated && (
+            <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>
+              Updated {Math.floor((Date.now() - lastUpdated.getTime()) / 60000) < 1
+                ? "just now"
+                : `${Math.floor((Date.now() - lastUpdated.getTime()) / 60000)}m ago`}
+              {" · "}refreshes in {Math.floor(nextRefreshIn / 60)}:{String(nextRefreshIn % 60).padStart(2, "0")}
+            </span>
+          )}
+          <button onClick={() => router.push("/")} className="back-btn">← Back</button>
+        </div>
       </nav>
 
       <div className="dashboard-header">
@@ -195,11 +245,20 @@ export default function AssetDashboard({ params }: { params: Promise<{ ticker: s
             <div className="card">
               <h2>AI Market Analysis</h2>
               <div className="ai-summary">
-                {aiSummary.split("\n").map((paragraph, idx) => (
-                  <p key={idx} style={{ margin: paragraph.trim() ? "0 0 0.85rem 0" : "0" }}>
-                    {paragraph}
-                  </p>
-                ))}
+                {aiSummary.split("\n").map((paragraph, idx) => {
+                  const trimmed = paragraph.trim();
+                  if (!trimmed) return <p key={idx} style={{ margin: "0" }} />;
+                  const headingMatch = trimmed.match(/^#{1,3}\s+(.+)/);
+                  if (headingMatch) {
+                    return <p key={idx} style={{ margin: "0 0 0.4rem 0", fontWeight: 700 }}>{headingMatch[1]}</p>;
+                  }
+                  const parts = trimmed.split(/\*\*(.+?)\*\*/g);
+                  return (
+                    <p key={idx} style={{ margin: "0 0 0.85rem 0" }}>
+                      {parts.map((part, i) => i % 2 === 1 ? <strong key={i}>{part}</strong> : part)}
+                    </p>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -210,7 +269,9 @@ export default function AssetDashboard({ params }: { params: Promise<{ ticker: s
               {newsData?.social?.length > 0 ? (
                 newsData.social.map((post: any, idx: number) => (
                   <a href={post.url} target="_blank" rel="noopener noreferrer" key={idx} className="news-item">
-                    <div className="news-source">{post.source}</div>
+                    <div className="news-item-header">
+                      <div className="news-source">{post.source}</div>
+                    </div>
                     <div className="news-title">{post.title}</div>
                     <div className="news-snippet">{post.text}</div>
                   </a>
