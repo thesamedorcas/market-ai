@@ -377,4 +377,4 @@ Requirements met:
 
 ## Acknowledgements
 
-Thank you to [afraid.org](https://afraid.org) for providing the free domain name used to host this project. If this project has been useful to you, please consider supporting free software, it makes projects like this possible.
+Thank you to [afraid.org](https://freedns.afraid.org/) for providing the free domain name used to host this project. If this project has been useful to you, please consider supporting free software, it makes projects like this possible.
