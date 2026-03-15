@@ -312,6 +312,16 @@ Then open [http://localhost:3000](http://localhost:3000) and search for any asse
 
 ---
 
+## Deployment
+
+Deployed on **BytePlus Elastic Compute Service (ECS)** — Jakarta region.
+
+- **Live URL:** http://market-ai.mooo.com
+- **IP:** 163.7.8.209
+- **Server:** Ubuntu 22.04, Node.js 20, served via nginx + PM2
+
+---
+
 ## API Reference
 
 ### `GET /api/multi-agent?ticker=AAPL`
