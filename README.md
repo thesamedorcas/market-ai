@@ -26,8 +26,8 @@ All of this streams in real-time via Server-Sent Events so you see results as ea
 |---|---|
 | Framework | Next.js 16 (App Router), React 19 |
 | AI analysis | OpenAI GPT-4o-mini |
-| Web-scraping agent | OpenClaw |
-| Market data | Stooq → Yahoo Finance v8 → OpenClaw (cascading fallback) |
+| AI fallback scraping | OpenClaw (powered by Anthropic Claude) |
+| Market data | Stooq → CoinGecko (crypto) / Yahoo Finance v8 → OpenClaw (cascading fallback) |
 | News & sentiment | Yahoo Finance RSS, Reddit JSON API, StockTwits (via OpenAI web search), OpenClaw |
 | Caching | better-sqlite3 (local SQLite, 15-min TTL) |
 | Charts | Recharts |
@@ -51,9 +51,10 @@ User query
     ▼                     ▼
 [2] Market Data Agent    [3] News & Sentiment Agent   ← run in parallel
     Stooq                    Yahoo Finance RSS
-    → Yahoo Finance v8       Reddit (r/all + r/wallstreetbets)
-    → OpenClaw fallback      StockTwits (via GPT-4o-mini web search)
-    → Stale cache            OpenClaw social sentinel (Twitter/X, TikTok)
+    → CoinGecko (crypto)     Reddit (r/all + r/wallstreetbets)
+    → Yahoo Finance v8       StockTwits (via GPT-4o-mini web search)
+    → OpenClaw fallback      OpenClaw social sentinel (Twitter/X, TikTok)
+    → Stale cache
     │                     │
     └─────────────────────┘
                 │
@@ -115,11 +116,11 @@ The asset dashboard also auto-refreshes every 5 minutes client-side via `setInte
 
 ## OpenClaw
 
-[OpenClaw](https://openclaw.dev) is an AI-powered web-browsing agent. Market AI uses it in two places:
+[OpenClaw](https://openclaw.dev) is an AI-powered web-browsing agent backed by Anthropic Claude. Market AI uses it in two places:
 
 ### 1. Market data fallback
 
-If both Stooq and Yahoo Finance fail (rate-limited, blocked, or the ticker is unusual), the Market Data Agent falls back to OpenClaw:
+If Stooq, CoinGecko, and Yahoo Finance all fail (rate-limited, blocked, or the ticker is unusual), the Market Data Agent falls back to OpenClaw:
 
 ```
 prompt: "Search the live web for the current price of {TICKER}.
@@ -153,15 +154,15 @@ const { stdout } = await execAsync(
 
 The 30-second timeout prevents the agent from blocking the rest of the pipeline. If it times out or errors, the system continues with whatever data it already has.
 
-### Syncing the API key
+### Syncing API keys
 
-OpenClaw needs your OpenAI key in its own config. Run this once after setting up `.env.local`:
+OpenClaw needs both your OpenAI and Anthropic keys in its own config. Run this once after setting up `.env.local`:
 
 ```bash
 node sync-key.js
 ```
 
-This writes the key to `~/.openclaw/agents/main/agent/auth-profiles.json`.
+This writes both keys to `~/.openclaw/agents/main/agent/auth-profiles.json`. Requires `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in `.env.local`.
 
 ---
 
@@ -247,10 +248,11 @@ Before hitting Stooq, a `stooqSupports()` guard filters out tickers it can't han
 ```
 Cache (fresh, <15 min)
   └─ miss → Stooq (stocks only — fast, no auth)
-               └─ fail/unsupported → Yahoo Finance v8 (host 1 → host 2)
-                                       └─ fail → OpenClaw live scrape
-                                                   └─ fail → Stale cache
-                                                               └─ miss → 500 error
+               └─ fail/unsupported → CoinGecko (crypto only — free, no auth)
+                                       └─ miss/fail → Yahoo Finance v8 (host 1 → host 2)
+                                                         └─ fail → OpenClaw live scrape (Claude-powered)
+                                                                     └─ fail → Stale cache
+                                                                                 └─ miss → 500 error
 ```
 
 For news, all four sources (Yahoo RSS, Reddit, StockTwits, OpenClaw) run concurrently and each can fail independently without affecting the others.
@@ -297,11 +299,12 @@ npm install
 
 # Configure environment
 cp .env.local.example .env.local
-# Add your OpenAI API key to .env.local:
-# OPENAI_API_KEY=sk-...
+# Add your API keys to .env.local:
+# OPENAI_API_KEY=sk-...          (required — powers AI analysis)
+# ANTHROPIC_API_KEY=sk-ant-...   (required — powers OpenClaw fallback scraping)
 # Optional: CRON_SECRET=your-secret   (protects /api/cron/refresh)
 
-# Sync the key to OpenClaw
+# Sync keys to OpenClaw
 node sync-key.js
 
 # Run locally
@@ -360,10 +363,18 @@ This project was built for the BytePlus AI Agent Project Internship 2026 (London
 
 Requirements met:
 
-- **OpenClaw** — used as a web-scraping fallback for both market data and social sentiment (Twitter/X, TikTok)
+- **OpenClaw** — used as a web-scraping fallback for both market data and social sentiment (Twitter/X, TikTok), powered by Anthropic Claude
+- **Claude API** — Anthropic `claude-haiku` via OpenClaw drives the last-resort web scraping agent
 - **Non-Claude AI model** — OpenAI GPT-4o-mini powers the financial analysis and StockTwits web search
+- **CoinGecko** — free crypto price API used as the primary source for all crypto pairs (BTC-USD, ETH-USD, etc.), bypassing Yahoo Finance rate limits
 - **Multi-agent pipeline** — four specialised agents running concurrently with SSE streaming
 - **Regular data extraction** — server-side cron refreshes a 10-ticker watchlist every 5 minutes; client-side auto-refresh keeps the dashboard live
 - **Future trend analysis** — AI output is structured as a forward-looking report: current situation, 1–4 week outlook with bull/bear cases, and key catalysts
 - **Social media coverage** — Reddit, r/wallstreetbets, StockTwits, Twitter/X, and TikTok
 - **Engineering robustness** — cascading fallbacks, rate-limit handling, stale cache recovery, input normalisation, and timeout guards throughout
+
+---
+
+## Acknowledgements
+
+Thank you to [afraid.org](https://afraid.org) for providing the free domain name used to host this project. If this project has been useful to you, please consider supporting free software, it makes projects like this possible.
