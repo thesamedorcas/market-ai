@@ -357,10 +357,6 @@ Body: `{ ticker, marketData, socialData }`. Returns `{ summary }`.
 
 ## Assignment Context
 
-This project was built for the BytePlus AI Agent Project Internship 2026 (London) — specifically the **Financial Data Analysis** track:
-
-> *"Regularly extracting and summarising public data sources and social media information, analysing future trends in the stock market, Bitcoin, gold, etc."*
-
 Requirements met:
 
 - **OpenClaw** — used as a web-scraping fallback for both market data and social sentiment (Twitter/X, TikTok), powered by Anthropic Claude
