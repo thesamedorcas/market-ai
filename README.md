@@ -2,7 +2,7 @@
 
 > Financial data without the noise, real-time stock, crypto, and commodity analysis powered by a multi-agent AI pipeline.
 
-Built for the BytePlus AI Agent Project Internship assessment (Financial Data Analysis track). The system regularly extracts and summarises public financial data and social sentiment, analyses future trends across stocks, Bitcoin, gold, and more, and presents everything through a clean streaming dashboard.
+The system regularly extracts and summarises public financial data and social sentiment, analyses future trends across stocks, Bitcoin, gold, and more, and presents everything through a clean streaming dashboard.
 
 ---
 
