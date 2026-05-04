@@ -43,21 +43,31 @@ async function resolveTickerSymbol(input: string): Promise<string> {
   if (looksLikeTicker(upper)) return upper;
 
 
+  const RESOLVE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — ticker names don't change
   const cacheKey = `resolve:${input.toLowerCase()}`;
-  const cached = getCached<string>(cacheKey);
-  if (cached) return cached.data;
+  const cached = getCached<string>(cacheKey, RESOLVE_TTL_MS);
+  if (cached) {
+    console.log(`[resolve cache hit] "${input}" → "${cached.data}"`);
+    return cached.data;
+  }
 
   try {
     const searchRes = await fetch(
-      `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(input)}&quotesCount=1&newsCount=0`,
+      `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(input)}&quotesCount=5&newsCount=0`,
       { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(6000) }
     );
     if (searchRes.ok) {
       const searchJson = await searchRes.json();
-      const symbol: string | undefined = searchJson?.quotes?.[0]?.symbol;
-      if (symbol && looksLikeTicker(symbol)) {
-        setCached(cacheKey, symbol);
-        return symbol;
+      const quotes: any[] = searchJson?.quotes || [];
+      // prefer major exchanges over obscure regional ones
+      const PREFERRED = ["NMS", "NYQ", "NGM", "PCX", "XNYS", "NYS", "ASE", "CCC", "CCY"];
+      const best =
+        quotes.find((q) => PREFERRED.includes(q.exchange) && looksLikeTicker(q.symbol)) ??
+        quotes.find((q) => looksLikeTicker(q.symbol));
+      if (best?.symbol) {
+        console.log(`[resolve cache set] "${input}" → "${best.symbol}"`);
+        setCached(cacheKey, best.symbol);
+        return best.symbol;
       }
     }
   } catch {
@@ -165,7 +175,9 @@ export async function GET(request: NextRequest) {
 
       if (!marketRes.ok) {
         const err = await marketRes.json().catch(() => ({}));
-        throw new Error((err as any).error || "Market data agent failed");
+        const msg = (err as any).error || "Market data agent failed";
+        await emit("error", { error: `Could not find market data for "${ticker}". ${msg}` });
+        return;
       }
 
       const [marketData, newsData] = await Promise.all([
