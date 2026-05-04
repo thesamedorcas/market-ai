@@ -22,6 +22,16 @@ function fullChainFor(ticker: string): string[] {
   return ticker.toUpperCase().endsWith("-USD") ? CHAIN_CRYPTO : CHAIN_STOCK;
 }
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s*/g, "")          // ## headers
+    .replace(/\*\*(.*?)\*\*/g, "$1")    // **bold**
+    .replace(/\*(.*?)\*/g, "$1")        // *italic*
+    .replace(/`([^`]+)`/g, "$1")        // `code`
+    .replace(/^\s*[-*+]\s/gm, "• ")     // bullet points
+    .trim();
+}
+
 function timeAgo(ms: number): string {
   const diff = Date.now() - ms;
   if (diff < 60_000) return "just now";
@@ -179,7 +189,7 @@ export default function Home() {
                   {isOpen && item.summary && (
                     <div className="analysis-panel">
                       <p className="analysis-meta">{item.ticker} · analysis from {timeAgo(item.searchedAt)}</p>
-                      <p className="analysis-text">{item.summary}</p>
+                      <p className="analysis-text">{stripMarkdown(item.summary)}</p>
                     </div>
                   )}
                 </div>
