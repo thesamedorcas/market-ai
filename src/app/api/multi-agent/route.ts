@@ -144,7 +144,10 @@ export async function GET(request: NextRequest) {
   const emit = (event: string, data: unknown) =>
     writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
 
-  const origin = new URL(request.url).origin;
+  const _url = new URL(request.url);
+  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? _url.protocol.replace(":", "");
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? _url.host;
+  const origin = `${proto}://${host}`;
 
   (async () => {
     try {
