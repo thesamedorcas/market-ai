@@ -355,9 +355,9 @@ async function fetchOpenclawMarketData(ticker: string) {
   const prompt = `Search the live web or a reliable financial site for the current price of ${ticker}. Return ONLY valid JSON in this exact structure, with no markdown formatting or other text: {"symbol":"${ticker}","shortName":"${ticker}","regularMarketPrice":123.45,"regularMarketChange":1.23,"regularMarketChangePercent":1.05,"currency":"USD","fiftyTwoWeekHigh":150.00,"fiftyTwoWeekLow":100.00,"historical":[]}`;
 
   try {
-    const { stdout } = await execAsync(`npx openclaw agent --local --json --to dummy --message '${prompt}' --thinking low`, {
+    const { stdout } = await execAsync(`./node_modules/.bin/openclaw agent --local --json --to dummy --message '${prompt}' --thinking low`, {
       timeout: 8000,
-      env: { ...process.env, OPENAI_API_KEY: process.env.OPENAI_API_KEY }
+      env: { ...process.env, HOME: "/tmp", OPENAI_API_KEY: process.env.OPENAI_API_KEY }
     });
 
     // Parse the outer Openclaw API wrapper

@@ -103,9 +103,9 @@ async function fetchOpenclawSocial(ticker: string): Promise<any[]> {
   const prompt = `Search Twitter/X or TikTok or other financial web sources for the latest 3 posts/news regarding the stock/crypto $${ticker}. Return ONLY valid JSON in this exact structure, with no markdown or explanation: [{"title":"Summary of post","text":"Full text of post","url":"https://example.com","source":"Twitter","sentiment":"Bullish"}]`;
 
   try {
-    const { stdout } = await execAsync(`npx openclaw agent --local --json --to dummy --message '${prompt}' --thinking low`, {
+    const { stdout } = await execAsync(`./node_modules/.bin/openclaw agent --local --json --to dummy --message '${prompt}' --thinking low`, {
       timeout: 8000,
-      env: { ...process.env, OPENAI_API_KEY: process.env.OPENAI_API_KEY }
+      env: { ...process.env, HOME: "/tmp", OPENAI_API_KEY: process.env.OPENAI_API_KEY }
     });
     const outer = JSON.parse(stdout);
     const agentText = outer.payloads?.[0]?.text || "";
