@@ -5,13 +5,12 @@ import { getCached, setCached } from "@/lib/db";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "dummy_key" });
 
 // maps plain english to ticker symbols
-// using ETFs for commodities (GLD, SLV) rather than futures (GC=F, SI=F) — futures
 const TICKER_ALIASES: Record<string, string> = {
-  // Commodities → liquid ETFs
-  gold: "GLD", silver: "SLV", copper: "CPER",
-  oil: "USO", "crude oil": "USO", crude: "USO",
-  "natural gas": "UNG", gas: "UNG",
-  wheat: "WEAT", corn: "CORN", soybeans: "SOYB",
+  // Commodities → futures (Stooq supports via .f suffix; Yahoo Finance supports =F natively)
+  gold: "GC=F", silver: "SI=F", copper: "HG=F",
+  oil: "CL=F", "crude oil": "CL=F", crude: "CL=F",
+  "natural gas": "NG=F", gas: "NG=F",
+  wheat: "ZW=F", corn: "ZC=F", soybeans: "ZS=F",
   // Crypto
   bitcoin: "BTC-USD", btc: "BTC-USD",
   ethereum: "ETH-USD", eth: "ETH-USD",
