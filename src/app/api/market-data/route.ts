@@ -210,6 +210,59 @@ async function fetchCoinGecko(ticker: string) {
   };
 }
 
+// CoinCap — cloud-IP friendly, no key, no aggressive rate limits
+const COINCAP_IDS: Record<string, string> = {
+  "BTC-USD": "bitcoin", "ETH-USD": "ethereum", "SOL-USD": "solana",
+  "DOGE-USD": "dogecoin", "XRP-USD": "ripple", "ADA-USD": "cardano",
+  "AVAX-USD": "avalanche", "MATIC-USD": "polygon", "DOT-USD": "polkadot",
+  "LINK-USD": "chainlink", "LTC-USD": "litecoin", "BNB-USD": "binance-coin",
+  "UNI-USD": "uniswap", "ATOM-USD": "cosmos", "SHIB-USD": "shiba-inu",
+};
+
+async function fetchCoinCap(ticker: string) {
+  const id = COINCAP_IDS[ticker.toUpperCase()];
+  if (!id) throw new Error(`No CoinCap ID for "${ticker}"`);
+
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const [assetRes, histRes] = await Promise.all([
+    fetch(`https://api.coincap.io/v2/assets/${id}`, { signal: AbortSignal.timeout(10000) }),
+    fetch(`https://api.coincap.io/v2/assets/${id}/history?interval=d1&start=${thirtyDaysAgo}&end=${Date.now()}`, {
+      signal: AbortSignal.timeout(10000),
+    }),
+  ]);
+
+  if (!assetRes.ok) throw new Error(`CoinCap HTTP ${assetRes.status}`);
+  const { data: coin } = await assetRes.json();
+  if (!coin) throw new Error(`No CoinCap data for "${ticker}"`);
+
+  const currentPrice = parseFloat(coin.priceUsd);
+  const changePct = parseFloat(coin.changePercent24Hr);
+  const change = currentPrice * (changePct / 100);
+
+  let historical: { date: string; close: number }[] = [];
+  if (histRes.ok) {
+    const { data: hist } = await histRes.json();
+    historical = (hist || []).slice(-30).map((h: any) => ({
+      date: new Date(h.time).toISOString().split("T")[0],
+      close: parseFloat(h.priceUsd),
+    }));
+  }
+
+  const closes = historical.map((r) => r.close);
+  return {
+    symbol: ticker.toUpperCase(),
+    shortName: coin.name,
+    regularMarketPrice: currentPrice,
+    regularMarketChange: change,
+    regularMarketChangePercent: changePct,
+    currency: "USD",
+    marketCap: parseFloat(coin.marketCapUsd) || null,
+    fiftyTwoWeekHigh: closes.length ? Math.max(...closes) : currentPrice,
+    fiftyTwoWeekLow: closes.length ? Math.min(...closes) : currentPrice,
+    historical,
+  };
+}
+
 // Yahoo Finance v7 quote — different endpoint, separate rate-limit bucket from v8
 async function fetchYahooQuote(ticker: string) {
   const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}`;
@@ -358,7 +411,12 @@ export async function GET(request: NextRequest) {
         try {
           marketData = await fetchBinance(ticker);
         } catch (binErr: any) {
-          console.warn(`Binance failed for "${ticker}" (${binErr.message}), trying Yahoo Finance…`);
+          console.warn(`Binance failed for "${ticker}" (${binErr.message}), trying CoinCap…`);
+          try {
+            marketData = await fetchCoinCap(ticker);
+          } catch (ccErr: any) {
+            console.warn(`CoinCap failed for "${ticker}" (${ccErr.message}), trying Yahoo Finance…`);
+          }
         }
       }
     }
