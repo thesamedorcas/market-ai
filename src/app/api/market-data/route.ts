@@ -348,6 +348,70 @@ async function fetchBinance(ticker: string) {
   };
 }
 
+// Twelve Data — optional fallback (set TWELVE_DATA_API_KEY env var to enable)
+// NOTE: free tier is 800 calls/day — results are cached for 30 min to protect that limit
+const TD_TTL_MS = 30 * 60 * 1000;
+
+async function fetchTwelveData(ticker: string) {
+  const apiKey = process.env.TWELVE_DATA_API_KEY;
+  if (!apiKey) throw new Error("TWELVE_DATA_API_KEY not set");
+
+  // 30-min cache specifically for Twelve Data to protect API quota
+  const tdKey = `td:market:${ticker.toUpperCase()}`;
+  const cached = getCached(tdKey, TD_TTL_MS);
+  if (cached) {
+    console.log(`Twelve Data 30-min cache hit for "${ticker}"`);
+    return cached.data;
+  }
+
+  const base = "https://api.twelvedata.com";
+  const sym = encodeURIComponent(ticker);
+
+  const [quoteRes, tsRes] = await Promise.all([
+    fetch(`${base}/quote?symbol=${sym}&apikey=${apiKey}`, { signal: AbortSignal.timeout(10000) }),
+    fetch(`${base}/time_series?symbol=${sym}&interval=1day&outputsize=30&apikey=${apiKey}`, {
+      signal: AbortSignal.timeout(10000),
+    }),
+  ]);
+
+  if (!quoteRes.ok) throw new Error(`Twelve Data HTTP ${quoteRes.status}`);
+  const quote = await quoteRes.json();
+  if (quote.status === "error") throw new Error(`Twelve Data: ${quote.message}`);
+
+  const currentPrice = parseFloat(quote.close);
+  const prevClose = parseFloat(quote.previous_close);
+  const change = parseFloat(quote.change);
+  const changePct = parseFloat(quote.percent_change);
+
+  let historical: { date: string; close: number }[] = [];
+  if (tsRes.ok) {
+    const ts = await tsRes.json();
+    if (ts.status !== "error" && Array.isArray(ts.values)) {
+      historical = ts.values
+        .map((v: any) => ({ date: v.datetime, close: parseFloat(v.close) }))
+        .filter((r: any) => !isNaN(r.close))
+        .reverse(); // Twelve Data returns newest-first
+    }
+  }
+
+  const closes = historical.map((r) => r.close);
+  const result = {
+    symbol: (quote.symbol as string) ?? ticker.toUpperCase(),
+    shortName: (quote.name as string) || ticker.toUpperCase(),
+    regularMarketPrice: currentPrice,
+    regularMarketChange: change,
+    regularMarketChangePercent: changePct,
+    currency: (quote.currency as string) || "USD",
+    marketCap: null,
+    fiftyTwoWeekHigh: parseFloat(quote.fifty_two_week?.high) || (closes.length ? Math.max(...closes) : currentPrice),
+    fiftyTwoWeekLow: parseFloat(quote.fifty_two_week?.low) || (closes.length ? Math.min(...closes) : currentPrice),
+    historical,
+  };
+
+  setCached(tdKey, result);
+  return result;
+}
+
 // Openclaw Fallback
 async function fetchOpenclawMarketData(ticker: string) {
   console.log(`Spawning Openclaw agent to fetch market data for ${ticker}...`);
@@ -355,7 +419,8 @@ async function fetchOpenclawMarketData(ticker: string) {
   const prompt = `Search the live web or a reliable financial site for the current price of ${ticker}. Return ONLY valid JSON in this exact structure, with no markdown formatting or other text: {"symbol":"${ticker}","shortName":"${ticker}","regularMarketPrice":123.45,"regularMarketChange":1.23,"regularMarketChangePercent":1.05,"currency":"USD","fiftyTwoWeekHigh":150.00,"fiftyTwoWeekLow":100.00,"historical":[]}`;
 
   try {
-    const { stdout } = await execAsync(`./node_modules/.bin/openclaw agent --local --json --to dummy --message '${prompt}' --thinking low`, {
+    const safePrompt = prompt.replace(/'/g, `'\\''`);
+    const { stdout } = await execAsync(`./node_modules/.bin/openclaw agent --local --json --message '${safePrompt}' --thinking low`, {
       timeout: 8000,
       env: { ...process.env, HOME: "/tmp", OPENAI_API_KEY: process.env.OPENAI_API_KEY }
     });
@@ -430,8 +495,13 @@ export async function GET(request: NextRequest) {
         try {
           marketData = await fetchYahooQuote(ticker);
         } catch (yf7Err: any) {
-          console.warn(`Yahoo Finance v7 failed for "${ticker}" (${yf7Err.message}), falling back to Openclaw Agent…`);
-          marketData = await fetchOpenclawMarketData(ticker);
+          console.warn(`Yahoo Finance v7 failed for "${ticker}" (${yf7Err.message}), trying Twelve Data…`);
+          try {
+            marketData = await fetchTwelveData(ticker);
+          } catch (tdErr: any) {
+            console.warn(`Twelve Data failed for "${ticker}" (${tdErr.message}), falling back to Openclaw Agent…`);
+            marketData = await fetchOpenclawMarketData(ticker);
+          }
         }
       }
     }

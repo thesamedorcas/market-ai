@@ -103,7 +103,8 @@ async function fetchOpenclawSocial(ticker: string): Promise<any[]> {
   const prompt = `Search Twitter/X or TikTok or other financial web sources for the latest 3 posts/news regarding the stock/crypto $${ticker}. Return ONLY valid JSON in this exact structure, with no markdown or explanation: [{"title":"Summary of post","text":"Full text of post","url":"https://example.com","source":"Twitter","sentiment":"Bullish"}]`;
 
   try {
-    const { stdout } = await execAsync(`./node_modules/.bin/openclaw agent --local --json --to dummy --message '${prompt}' --thinking low`, {
+    const safePrompt = prompt.replace(/'/g, `'\\''`);
+    const { stdout } = await execAsync(`./node_modules/.bin/openclaw agent --local --json --message '${safePrompt}' --thinking low`, {
       timeout: 8000,
       env: { ...process.env, HOME: "/tmp", OPENAI_API_KEY: process.env.OPENAI_API_KEY }
     });
@@ -137,14 +138,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [yahooNews, redditPosts, stocktwitsPosts, openclawPosts] = await Promise.all([
+    const [yahooNews, redditPosts, stocktwitsPosts] = await Promise.all([
       fetchYahooNews(ticker),
       fetchReddit(query),
       fetchStockTwits(ticker),
-      fetchOpenclawSocial(ticker),
+      // fetchOpenclawSocial(ticker), // disabled: Twitter/X + TikTok not consistently accessible
     ]);
 
-    const social = [...yahooNews, ...redditPosts, ...stocktwitsPosts, ...openclawPosts];
+    const social = [...yahooNews, ...redditPosts, ...stocktwitsPosts];
     const cachedAt = setCached(cacheKey, { social });
 
     return NextResponse.json({ news: [], social, cachedAt });

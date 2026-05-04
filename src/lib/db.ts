@@ -30,22 +30,22 @@ try {
   sqliteDb = null;
 }
 
-/** Returns fresh entry, or null if missing / expired (>15 min). */
-export function getCached<T = unknown>(key: string): CacheEntry<T> | null {
+/** Returns fresh entry, or null if missing / expired. Defaults to 15-min TTL. */
+export function getCached<T = unknown>(key: string, ttlMs: number = TTL_MS): CacheEntry<T> | null {
   try {
     if (sqliteDb) {
       const row = sqliteDb
         .prepare("SELECT data, cached_at FROM cache WHERE key = ?")
         .get(key) as { data: string; cached_at: number } | undefined;
       if (!row) return null;
-      if (Date.now() - row.cached_at > TTL_MS) return null;
+      if (Date.now() - row.cached_at > ttlMs) return null;
       return { data: JSON.parse(row.data) as T, cachedAt: row.cached_at, isStale: false };
     }
   } catch {}
 
   const entry = memCache.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.cachedAt > TTL_MS) return null;
+  if (Date.now() - entry.cachedAt > ttlMs) return null;
   return { data: entry.data as T, cachedAt: entry.cachedAt, isStale: false };
 }
 
