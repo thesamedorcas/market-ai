@@ -499,15 +499,15 @@ export async function GET(request: NextRequest) {
     if (!marketData) {
       try {
         marketData = await fetchYahooChart(ticker);
-        sources.push("Yahoo Finance ✓");
+        sources.push("Yahoo v8 ✓");
       } catch (yfErr: any) {
-        sources.push("Yahoo Finance v8 ✗");
+        sources.push("Yahoo v8 ✗");
         console.warn(`Yahoo Finance v8 failed for "${ticker}" (${yfErr.message}), trying Yahoo v7 quote…`);
         try {
           marketData = await fetchYahooQuote(ticker);
-          sources.push("Yahoo Finance v7 ✓");
+          sources.push("Yahoo v7 ✓");
         } catch (yf7Err: any) {
-          sources.push("Yahoo Finance v7 ✗");
+          sources.push("Yahoo v7 ✗");
           console.warn(`Yahoo Finance v7 failed for "${ticker}" (${yf7Err.message}), trying Twelve Data…`);
           try {
             marketData = await fetchTwelveData(ticker);

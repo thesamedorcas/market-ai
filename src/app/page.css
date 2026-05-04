@@ -146,24 +146,23 @@
 }
 
 .activity-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
   width: 100%;
-  background: none;
-  border: none;
   border-bottom: 1px solid var(--border);
-  padding: 0.7rem 0;
-  cursor: pointer;
-  text-align: left;
-  color: inherit;
 }
 
 .activity-item:first-of-type {
   border-top: 1px solid var(--border);
 }
 
-.activity-item:hover .activity-query {
+.activity-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.7rem 0 0.4rem;
+  cursor: pointer;
+}
+
+.activity-main:hover .activity-query {
   color: var(--accent);
 }
 
@@ -193,6 +192,11 @@
 
 .activity-meta {
   align-items: center;
+}
+
+.activity-name {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .activity-query {
@@ -257,14 +261,68 @@
   margin: 0 0.1rem;
 }
 
-.chain-miss {
-  color: var(--muted);
-  opacity: 0.6;
+.chain-fail {
+  color: #ef4444;
+  text-decoration: line-through;
+  opacity: 0.85;
 }
 
 .chain-hit {
   color: #22c55e;
   font-weight: 600;
+}
+
+.chain-skip {
+  color: var(--muted);
+  opacity: 0.35;
+}
+
+.chain-badge {
+  font-size: 0.65rem;
+}
+
+/* View Analysis toggle */
+.analysis-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  margin: 0 0 0.6rem 1.3rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.analysis-toggle:hover,
+.analysis-toggle.open {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Expanded analysis panel */
+.analysis-panel {
+  margin: 0 0 0.75rem 1.3rem;
+  padding: 0.85rem 1rem;
+  border-left: 2px solid var(--accent);
+  background: var(--card-bg);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.analysis-meta {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.analysis-text {
+  font-size: 0.82rem;
+  color: var(--foreground);
+  line-height: 1.65;
+  white-space: pre-line;
 }
 
 .home-footer {
