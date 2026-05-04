@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { getCached, setCached } from "@/lib/db";
+import { getCached, setCached, saveSearchHistory } from "@/lib/db";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "dummy_key" });
 
@@ -196,6 +196,16 @@ export async function GET(request: NextRequest) {
       );
 
       await emit("result", { marketData, social: socialData, summary, lastUpdated, resolvedTicker: ticker });
+
+      saveSearchHistory({
+        input: rawTicker,
+        ticker,
+        marketData,
+        socialData,
+        summary,
+        sources: (marketData as any).sourcesAttempted || [],
+        searchedAt: Date.now(),
+      });
     } catch (error: any) {
       console.error("Multi-agent orchestration error:", error);
       await emit("error", { error: error.message || "Multi-agent orchestration failed" });

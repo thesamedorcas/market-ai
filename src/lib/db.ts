@@ -25,6 +25,18 @@ try {
       cached_at INTEGER NOT NULL
     )
   `);
+  sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS search_history (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      input       TEXT    NOT NULL,
+      ticker      TEXT    NOT NULL,
+      market_data TEXT    NOT NULL,
+      social_data TEXT    NOT NULL,
+      summary     TEXT    NOT NULL,
+      sources     TEXT    NOT NULL,
+      searched_at INTEGER NOT NULL
+    )
+  `);
   sqliteDb.prepare("DELETE FROM cache WHERE cached_at < ?").run(Date.now() - TTL_MS);
 } catch {
   sqliteDb = null;
@@ -65,6 +77,67 @@ export function getStale<T = unknown>(key: string): CacheEntry<T> | null {
   if (!entry) return null;
   const isStale = Date.now() - entry.cachedAt > TTL_MS;
   return { data: entry.data as T, cachedAt: entry.cachedAt, isStale };
+}
+
+export interface HistoryItem {
+  id?: number;
+  input: string;
+  ticker: string;
+  marketData: unknown;
+  socialData: unknown;
+  summary: string;
+  sources: string[];
+  searchedAt: number;
+}
+
+const searchHistoryMem: HistoryItem[] = [];
+
+export function saveSearchHistory(item: Omit<HistoryItem, "id">): void {
+  try {
+    if (sqliteDb) {
+      sqliteDb
+        .prepare(
+          `INSERT INTO search_history (input, ticker, market_data, social_data, summary, sources, searched_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          item.input,
+          item.ticker,
+          JSON.stringify(item.marketData),
+          JSON.stringify(item.socialData),
+          item.summary,
+          JSON.stringify(item.sources),
+          item.searchedAt
+        );
+      return;
+    }
+  } catch {}
+  searchHistoryMem.push(item);
+  if (searchHistoryMem.length > 200) searchHistoryMem.shift();
+}
+
+export function getGlobalHistory(limitHours = 8): HistoryItem[] {
+  const cutoff = Date.now() - limitHours * 60 * 60 * 1000;
+  try {
+    if (sqliteDb) {
+      const rows = sqliteDb
+        .prepare(
+          `SELECT * FROM search_history WHERE searched_at > ? ORDER BY searched_at DESC LIMIT 20`
+        )
+        .all(cutoff) as any[];
+      return rows.map((row: any) => ({
+        id: row.id,
+        input: row.input,
+        ticker: row.ticker,
+        marketData: JSON.parse(row.market_data),
+        socialData: JSON.parse(row.social_data),
+        summary: row.summary,
+        sources: JSON.parse(row.sources),
+        searchedAt: row.searched_at,
+      }));
+    }
+  } catch {}
+  return [...searchHistoryMem].filter((e) => e.searchedAt > cutoff).reverse().slice(0, 20);
 }
 
 export function setCached(key: string, data: unknown): number {

@@ -457,12 +457,15 @@ export async function GET(request: NextRequest) {
 
   try {
     let marketData;
+    const sources: string[] = [];
 
     // Try Stooq first for plain stocks (fast, no auth)
     if (stooqSupports(ticker)) {
       try {
         marketData = await fetchStooq(ticker);
+        sources.push("Stooq ✓");
       } catch (stooqErr: any) {
+        sources.push("Stooq ✗");
         console.warn(`Stooq failed for "${ticker}" (${stooqErr.message}), trying Yahoo Finance…`);
       }
     }
@@ -471,15 +474,21 @@ export async function GET(request: NextRequest) {
     if (!marketData && isCrypto(ticker)) {
       try {
         marketData = await fetchCoinGecko(ticker);
+        sources.push("CoinGecko ✓");
       } catch (cgErr: any) {
+        sources.push("CoinGecko ✗");
         console.warn(`CoinGecko failed for "${ticker}" (${cgErr.message}), trying Binance…`);
         try {
           marketData = await fetchBinance(ticker);
+          sources.push("Binance ✓");
         } catch (binErr: any) {
+          sources.push("Binance ✗");
           console.warn(`Binance failed for "${ticker}" (${binErr.message}), trying CoinCap…`);
           try {
             marketData = await fetchCoinCap(ticker);
+            sources.push("CoinCap ✓");
           } catch (ccErr: any) {
+            sources.push("CoinCap ✗");
             console.warn(`CoinCap failed for "${ticker}" (${ccErr.message}), trying Yahoo Finance…`);
           }
         }
@@ -490,24 +499,31 @@ export async function GET(request: NextRequest) {
     if (!marketData) {
       try {
         marketData = await fetchYahooChart(ticker);
+        sources.push("Yahoo Finance ✓");
       } catch (yfErr: any) {
+        sources.push("Yahoo Finance v8 ✗");
         console.warn(`Yahoo Finance v8 failed for "${ticker}" (${yfErr.message}), trying Yahoo v7 quote…`);
         try {
           marketData = await fetchYahooQuote(ticker);
+          sources.push("Yahoo Finance v7 ✓");
         } catch (yf7Err: any) {
+          sources.push("Yahoo Finance v7 ✗");
           console.warn(`Yahoo Finance v7 failed for "${ticker}" (${yf7Err.message}), trying Twelve Data…`);
           try {
             marketData = await fetchTwelveData(ticker);
+            sources.push("Twelve Data ✓");
           } catch (tdErr: any) {
+            sources.push("Twelve Data ✗");
             console.warn(`Twelve Data failed for "${ticker}" (${tdErr.message}), falling back to Openclaw Agent…`);
             marketData = await fetchOpenclawMarketData(ticker);
+            sources.push("Openclaw ✓");
           }
         }
       }
     }
 
-    const cachedAt = setCached(cacheKey, marketData);
-    return NextResponse.json({ ...marketData, cachedAt });
+    const cachedAt = setCached(cacheKey, { ...marketData, sourcesAttempted: sources });
+    return NextResponse.json({ ...marketData, sourcesAttempted: sources, cachedAt });
   } catch (error: any) {
     console.error("Error fetching market data:", error.message);
     const stale = getStale(cacheKey);

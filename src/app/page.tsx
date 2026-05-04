@@ -1,12 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import "./page.css";
 
+interface HistoryItem {
+  id: number;
+  input: string;
+  ticker: string;
+  sources: string[];
+  searchedAt: number;
+}
+
+function timeAgo(ms: number): string {
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
 export default function Home() {
   const [query, setQuery] = useState("");
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/history")
+      .then((r) => r.json())
+      .then((data) => setHistory(data.history || []))
+      .catch(() => {});
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +70,33 @@ export default function Home() {
             </button>
           </div>
         </form>
+
+        {history.length > 0 && (
+          <div className="activity-feed">
+            <p className="activity-label">Global Activity · last 8 hrs</p>
+            {history.map((item) => (
+              <button
+                key={item.id}
+                className="activity-item"
+                onClick={() => router.push(`/asset/${encodeURIComponent(item.input)}`)}
+              >
+                <span className="activity-dot" />
+                <span className="activity-body">
+                  <span className="activity-query">
+                    typed <strong>&ldquo;{item.input}&rdquo;</strong>
+                    {item.input.toUpperCase() !== item.ticker && (
+                      <> → <code>{item.ticker}</code></>
+                    )}
+                  </span>
+                  {item.sources.length > 0 && (
+                    <span className="activity-sources">{item.sources.join(" · ")}</span>
+                  )}
+                </span>
+                <span className="activity-time">{timeAgo(item.searchedAt)}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <footer className="home-footer">
