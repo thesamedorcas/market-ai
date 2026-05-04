@@ -210,6 +210,33 @@ async function fetchCoinGecko(ticker: string) {
   };
 }
 
+// Yahoo Finance v7 quote — different endpoint, separate rate-limit bucket from v8
+async function fetchYahooQuote(ticker: string) {
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}`;
+  const res = await fetch(url, {
+    headers: { "User-Agent": YF_UA, "Accept": "application/json" },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error(`Yahoo v7 HTTP ${res.status} for "${ticker}"`);
+
+  const json = await res.json();
+  const quote = json?.quoteResponse?.result?.[0];
+  if (!quote) throw new Error(`No Yahoo v7 data for "${ticker}"`);
+
+  return {
+    symbol: (quote.symbol as string) ?? ticker.toUpperCase(),
+    shortName: (quote.shortName as string) || (quote.longName as string) || ticker.toUpperCase(),
+    regularMarketPrice: quote.regularMarketPrice as number,
+    regularMarketChange: quote.regularMarketChange as number,
+    regularMarketChangePercent: quote.regularMarketChangePercent as number,
+    currency: (quote.currency as string) || "USD",
+    marketCap: (quote.marketCap as number) || null,
+    fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh as number,
+    fiftyTwoWeekLow: quote.fiftyTwoWeekLow as number,
+    historical: [],
+  };
+}
+
 // Binance public API — no key, generous rate limits, crypto only
 function toBinanceSymbol(ticker: string): string | null {
   const upper = ticker.toUpperCase();
@@ -276,7 +303,7 @@ async function fetchOpenclawMarketData(ticker: string) {
 
   try {
     const { stdout } = await execAsync(`npx openclaw agent --local --json --to dummy --message '${prompt}' --thinking low`, {
-      timeout: 30000,
+      timeout: 8000,
       env: { ...process.env, OPENAI_API_KEY: process.env.OPENAI_API_KEY }
     });
 
@@ -341,8 +368,13 @@ export async function GET(request: NextRequest) {
       try {
         marketData = await fetchYahooChart(ticker);
       } catch (yfErr: any) {
-        console.warn(`Yahoo Finance failed for "${ticker}" (${yfErr.message}), falling back to Openclaw Agent…`);
-        marketData = await fetchOpenclawMarketData(ticker);
+        console.warn(`Yahoo Finance v8 failed for "${ticker}" (${yfErr.message}), trying Yahoo v7 quote…`);
+        try {
+          marketData = await fetchYahooQuote(ticker);
+        } catch (yf7Err: any) {
+          console.warn(`Yahoo Finance v7 failed for "${ticker}" (${yf7Err.message}), falling back to Openclaw Agent…`);
+          marketData = await fetchOpenclawMarketData(ticker);
+        }
       }
     }
 

@@ -104,7 +104,7 @@ async function fetchOpenclawSocial(ticker: string): Promise<any[]> {
 
   try {
     const { stdout } = await execAsync(`npx openclaw agent --local --json --to dummy --message '${prompt}' --thinking low`, {
-      timeout: 30000,
+      timeout: 8000,
       env: { ...process.env, OPENAI_API_KEY: process.env.OPENAI_API_KEY }
     });
     const outer = JSON.parse(stdout);
