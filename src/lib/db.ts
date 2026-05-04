@@ -93,15 +93,20 @@ export interface HistoryItem {
 const searchHistoryMem: HistoryItem[] = [];
 
 export function saveSearchHistory(item: Omit<HistoryItem, "id">): void {
+  const dedupeWindow = Date.now() - 5 * 60 * 1000; // skip if same search within 5 min
   try {
     if (sqliteDb) {
+      const existing = sqliteDb
+        .prepare(`SELECT id FROM search_history WHERE input = ? AND ticker = ? AND searched_at > ? LIMIT 1`)
+        .get(item.input.toLowerCase(), item.ticker, dedupeWindow);
+      if (existing) return;
       sqliteDb
         .prepare(
           `INSERT INTO search_history (input, ticker, market_data, social_data, summary, sources, searched_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
-          item.input,
+          item.input.toLowerCase(),
           item.ticker,
           JSON.stringify(item.marketData),
           JSON.stringify(item.socialData),
@@ -112,7 +117,11 @@ export function saveSearchHistory(item: Omit<HistoryItem, "id">): void {
       return;
     }
   } catch {}
-  searchHistoryMem.push(item);
+  const recentDupe = searchHistoryMem.find(
+    (e) => e.input === item.input.toLowerCase() && e.ticker === item.ticker && e.searchedAt > dedupeWindow
+  );
+  if (recentDupe) return;
+  searchHistoryMem.push({ ...item, input: item.input.toLowerCase() });
   if (searchHistoryMem.length > 200) searchHistoryMem.shift();
 }
 

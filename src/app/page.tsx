@@ -8,6 +8,7 @@ interface HistoryItem {
   id: number;
   input: string;
   ticker: string;
+  marketData: any;
   sources: string[];
   searchedAt: number;
 }
@@ -18,6 +19,26 @@ function timeAgo(ms: number): string {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function SourceChain({ sources }: { sources: string[] }) {
+  if (!sources.length) return null;
+  return (
+    <span className="source-chain">
+      {sources.map((s, i) => {
+        const ok = s.includes("✓");
+        const name = s.replace(/\s*[✓✗]/, "");
+        return (
+          <span key={i} className="chain-step">
+            {i > 0 && <span className="chain-arrow">→</span>}
+            <span className={ok ? "chain-hit" : "chain-miss"}>
+              {name}{ok ? " ✓" : ""}
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
 export default function Home() {
@@ -74,27 +95,45 @@ export default function Home() {
         {history.length > 0 && (
           <div className="activity-feed">
             <p className="activity-label">Global Activity · last 8 hrs</p>
-            {history.map((item) => (
-              <button
-                key={item.id}
-                className="activity-item"
-                onClick={() => router.push(`/asset/${encodeURIComponent(item.input)}`)}
-              >
-                <span className="activity-dot" />
-                <span className="activity-body">
-                  <span className="activity-query">
-                    typed <strong>&ldquo;{item.input}&rdquo;</strong>
-                    {item.input.toUpperCase() !== item.ticker && (
-                      <> → <code>{item.ticker}</code></>
-                    )}
+            {history.map((item) => {
+              const price = item.marketData?.regularMarketPrice;
+              const pct = item.marketData?.regularMarketChangePercent;
+              const currency = item.marketData?.currency ?? "USD";
+              const up = pct != null && pct >= 0;
+              return (
+                <button
+                  key={item.id}
+                  className="activity-item"
+                  onClick={() => router.push(`/asset/${encodeURIComponent(item.input)}`)}
+                >
+                  <span className="activity-dot" />
+                  <span className="activity-body">
+                    <span className="activity-row">
+                      <span className="activity-query">
+                        typed <strong>&ldquo;{item.input}&rdquo;</strong>
+                        {item.input !== item.ticker.toLowerCase() && (
+                          <> → <code>{item.ticker}</code></>
+                        )}
+                      </span>
+                      {price != null && (
+                        <span className="activity-price">
+                          {currency} {price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {pct != null && (
+                            <span className={up ? "pct-up" : "pct-down"}>
+                              {" "}{up ? "▲" : "▼"}{Math.abs(pct).toFixed(2)}%
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </span>
+                    <span className="activity-row activity-meta">
+                      <SourceChain sources={item.sources} />
+                      <span className="activity-time">{timeAgo(item.searchedAt)}</span>
+                    </span>
                   </span>
-                  {item.sources.length > 0 && (
-                    <span className="activity-sources">{item.sources.join(" · ")}</span>
-                  )}
-                </span>
-                <span className="activity-time">{timeAgo(item.searchedAt)}</span>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
