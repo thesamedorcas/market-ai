@@ -210,6 +210,64 @@ async function fetchCoinGecko(ticker: string) {
   };
 }
 
+// Binance public API — no key, generous rate limits, crypto only
+function toBinanceSymbol(ticker: string): string | null {
+  const upper = ticker.toUpperCase();
+  if (!upper.endsWith("-USD")) return null;
+  return upper.replace(/-USD$/, "USDT");
+}
+
+async function fetchBinance(ticker: string) {
+  const symbol = toBinanceSymbol(ticker);
+  if (!symbol) throw new Error(`No Binance symbol for "${ticker}"`);
+
+  const [tickerRes, klinesRes] = await Promise.all([
+    fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`, {
+      signal: AbortSignal.timeout(10000),
+    }),
+    fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1d&limit=31`, {
+      signal: AbortSignal.timeout(10000),
+    }),
+  ]);
+
+  if (!tickerRes.ok) throw new Error(`Binance HTTP ${tickerRes.status}`);
+  const tickerData = await tickerRes.json();
+
+  const currentPrice = parseFloat(tickerData.lastPrice);
+  const change = parseFloat(tickerData.priceChange);
+  const changePct = parseFloat(tickerData.priceChangePercent);
+
+  let historical: { date: string; close: number }[] = [];
+  let fiftyTwoWeekHigh = parseFloat(tickerData.highPrice);
+  let fiftyTwoWeekLow = parseFloat(tickerData.lowPrice);
+
+  if (klinesRes.ok) {
+    const klines = await klinesRes.json();
+    historical = klines.slice(0, -1).map((k: any[]) => ({
+      date: new Date(k[0]).toISOString().split("T")[0],
+      close: parseFloat(k[4]),
+    }));
+    const closes = historical.map((r) => r.close);
+    if (closes.length > 0) {
+      fiftyTwoWeekHigh = Math.max(...closes);
+      fiftyTwoWeekLow = Math.min(...closes);
+    }
+  }
+
+  return {
+    symbol: ticker.toUpperCase(),
+    shortName: ticker.toUpperCase(),
+    regularMarketPrice: currentPrice,
+    regularMarketChange: change,
+    regularMarketChangePercent: changePct,
+    currency: "USD",
+    marketCap: null,
+    fiftyTwoWeekHigh,
+    fiftyTwoWeekLow,
+    historical,
+  };
+}
+
 // Openclaw Fallback
 async function fetchOpenclawMarketData(ticker: string) {
   console.log(`Spawning Openclaw agent to fetch market data for ${ticker}...`);
@@ -264,12 +322,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // CoinGecko for crypto (free, no auth, no rate limits)
+    // CoinGecko for crypto, then Binance as backup
     if (!marketData && isCrypto(ticker)) {
       try {
         marketData = await fetchCoinGecko(ticker);
       } catch (cgErr: any) {
-        console.warn(`CoinGecko failed for "${ticker}" (${cgErr.message}), trying Yahoo Finance…`);
+        console.warn(`CoinGecko failed for "${ticker}" (${cgErr.message}), trying Binance…`);
+        try {
+          marketData = await fetchBinance(ticker);
+        } catch (binErr: any) {
+          console.warn(`Binance failed for "${ticker}" (${binErr.message}), trying Yahoo Finance…`);
+        }
       }
     }
 
