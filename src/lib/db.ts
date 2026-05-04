@@ -16,7 +16,7 @@ const memCache = new Map<string, { data: unknown; cachedAt: number }>();
 let sqliteDb: any = null;
 try {
   const Database = require("better-sqlite3");
-  const DB_PATH = path.join(process.cwd(), "cache.db");
+  const DB_PATH = process.env.VERCEL ? "/tmp/cache.db" : path.join(process.cwd(), "cache.db");
   sqliteDb = new Database(DB_PATH);
   sqliteDb.exec(`
     CREATE TABLE IF NOT EXISTS cache (
