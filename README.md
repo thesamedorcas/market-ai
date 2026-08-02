@@ -356,7 +356,7 @@ Body: `{ ticker, marketData, socialData }`. Returns `{ summary }`.
 
 ---
 
-## Assignment Context
+## Context
 
 Requirements met:
 
